@@ -1,0 +1,63 @@
+[package]
+name = "kittymemory-rs"
+version = "0.3.4"
+edition = "2021"
+authors = ["Rodroid Dev"]
+description = "Rust bindings for KittyMemory - A memory manipulation library for Android and iOS"
+license = "MIT"
+repository = "https://github.com/rodroidmods/kittymemory-rs"
+documentation = "https://docs.rs/kittymemory-rs"
+keywords = ["memory", "android", "ios", "ffi", "game-hacking"]
+categories = ["external-ffi-bindings", "game-development"]
+readme = "README.md"
+include = [
+    "src/**/*",
+    "examples/**/*",
+    "build.rs",
+    "wrapper.h",
+    "wrapper.cpp",
+    "kittymemory_fix.hpp",
+    "bindings.rs",
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+]
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+bindgen = "0.70"
+cc = "1.0"
+
+[features]
+default = []
+keystone = []
+android = []
+ios = []
+
+[lib]
+name = "kittymemory"
+path = "src/lib.rs"
+# crate-type = ["staticlib", "cdylib"]
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+overflow-checks = false
+
+[profile.release.package."*"] 
+opt-level = 3
+codegen-units = 1
+strip = true
+debug = false
+overflow-checks = false
