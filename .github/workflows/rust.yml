@@ -1,0 +1,102 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Install Rust toolchain (stable)
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        profile: minimal
+
+    # Setup Android SDK and NDK
+    - name: Setup Java (needed by Android sdkmanager)
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '11'
+
+    - name: Install Android SDK command-line tools and NDK
+      env:
+        ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      run: |
+        set -eux
+
+        # Prepare SDK root
+        mkdir -p "$ANDROID_SDK_ROOT"
+        mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+
+        # Download latest command line tools
+        curl -fSL https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -o /tmp/cmdline-tools.zip
+        unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
+
+        # Move into expected layout: cmdline-tools/latest/...
+        mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+        mv /tmp/cmdline-tools/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
+
+        # Make sdkmanager available via full path
+        SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+
+        # Install platform-tools, a platform and a specific NDK version
+        yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "ndk;25.2.9519653"
+
+        # Export environment variables for later steps
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+
+        # Add cargo bin and sdk tools to PATH for subsequent steps
+        echo "PATH=$HOME/.cargo/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+
+    - name: Add Android Rust target(s)
+      run: rustup target add aarch64-linux-android
+
+    - name: Install cargo-ndk
+      run: cargo install cargo-ndk --force
+
+    # Build for Android (arm64-v8a)
+    - name: Build Android (arm64-v8a)
+      env:
+        ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+      run: |
+        set -eux
+        export PATH="$HOME/.cargo/bin:$PATH"
+        cargo ndk -t arm64-v8a build --release
+
+    # Build with keystone feature
+    - name: Build Android (arm64-v8a) with keystone
+      env:
+        ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+      run: |
+        set -eux
+        export PATH="$HOME/.cargo/bin:$PATH"
+        cargo ndk -t arm64-v8a build --release --features keystone
+
+    # Run tests for Android target
+    - name: Test Android (arm64-v8a)
+      env:
+        ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+      run: |
+        set -eux
+        export PATH="$HOME/.cargo/bin:$PATH"
+        # Note: cargo ndk test requires an emulator or device, so we just build tests
+        cargo ndk -t arm64-v8a build --tests --release
+
+    # Check documentation builds
+    - name: Check documentation
+      run: cargo doc --no-deps
